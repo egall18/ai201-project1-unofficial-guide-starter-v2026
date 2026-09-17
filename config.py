@@ -27,8 +27,21 @@ CORPUS = os.getenv("AI201_CORPUS", "campus_life")
 # These are deliberately plain, generic numbers. Milestone 3 is where you
 # replace them with numbers that fit the documents you actually read.
 
-CHUNK_SIZE = 800        # characters per chunk
-CHUNK_OVERLAP = 120     # characters shared between neighbouring chunks
+# Measured before choosing: campus_life is 88 documents of 178-549 characters,
+# 2-5 paragraphs each, median paragraph 93 characters.
+#
+# 600 sits just above the longest document (549). That makes "one post, one
+# chunk" an explicit decision with 51 characters of margin, rather than
+# something that happened to be true because the default was 800. Anything
+# smaller starts splitting posts that are already one person's single thought.
+CHUNK_SIZE = 600
+
+# Zero, because split_documents never cuts inside a paragraph and prepends the
+# document's title line to every chunk. Overlap exists to stop a sentence
+# sliced down the middle from being unreadable; nothing here gets sliced, so
+# overlap would only copy text into the index twice — and near-duplicate chunks
+# are the exact problem this corpus already has too much of.
+CHUNK_OVERLAP = 0
 
 
 # ─── Retrieval (Milestone 4) ─────────────────────────────────────────────────
@@ -40,10 +53,28 @@ TOP_K = 5               # how many chunks to pull back per question
 #
 # LOWER IS BETTER: 0.3 is a close match, 0.9 is unrelated.
 #
-# 0.6 is a reasonable starting point, not a right answer. Milestone 4 has you
-# measure your own two groups of distances and put the cutoff in the gap.
-# Most corpora land somewhere between 0.45 and 0.75.
-THRESHOLD = 0.6
+# Measured in Milestone 4, not guessed.
+#
+#   my 5 test questions        0.215 - 0.412
+#   the 5 OUT_OF_SCOPE ones    0.825 - 0.934
+#
+# That gap is enormous, and 0.6 sits in the middle of it — but 0.6 is wrong
+# anyway, and the curated questions are why it looks right. Ten vaguer
+# questions this corpus genuinely answers ("what's the food like", "do I need a
+# coat", "where do people study") run 0.408 to 0.706, so a 0.6 cutoff refuses
+# six of them. My own test questions are phrased by someone who already knew the
+# answer; real ones aren't.
+#
+# 0.75 sits above that 0.706 ceiling and below the 0.825 floor of the
+# out-of-scope group, so it admits the vague-but-answerable and still refuses
+# all five out-of-scope questions.
+#
+# What this does NOT fix: campus-flavoured questions the corpus can't answer
+# land at 0.552 ("how much is tuition") through 0.742 ("who is the university
+# president"), straight through the in-corpus range. No threshold separates
+# those — see gate.py, which says it: the gate catches the clear misses and the
+# prompt catches the near ones. This number is set for the first job only.
+THRESHOLD = 0.75
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────
