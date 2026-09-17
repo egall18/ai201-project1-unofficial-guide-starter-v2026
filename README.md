@@ -1,19 +1,6 @@
 # The Unofficial Guide
 
-<!-- Replace this line with your name and which corpus you picked. -->
-
-> **This file is your submission.** Fill it in as you go — most sections get
-> written during the milestone that produces them, not at the end.
->
-> How the starter works, and every command you'll need, is in `RUNNING.md`.
-> Leave that file alone.
->
-> **Paste everything as text.** No screenshots, no video. A typed table gets
-> full credit; a picture of the same table gets none.
->
-> Delete these instruction blocks as you replace them. The `<!-- -->` comments
-> are notes to you and don't show up when the page renders — you can leave them
-> or remove them.
+Erik Gallardo-Cruz — corpus: `campus_life`
 
 ---
 
@@ -21,104 +8,316 @@
 
 ## What This Does
 
-<!-- Three or four sentences. Which corpus you picked, and the kinds of
-     questions your system answers. Write it for someone who has never seen
-     this repo.
+This answers questions about campus life at one university, from the
+`campus_life` corpus: 88 short documents in which students describe halls of
+residence, dining halls, courses, and the administrative rules nobody explains
+properly. It handles questions with a specific answer somewhere in those
+documents — how you pay for laundry in a particular hall, how many hours a week
+a particular course takes, what time the library closes during reading week —
+and answers them by retrieving the relevant documents and quoting from them,
+naming the file it used.
 
-     Milestone 5. -->
+It is deliberately narrow. A question the documents don't cover gets refused
+rather than guessed at, through two layers: a distance cutoff that stops
+questions with nothing close in the corpus, and a grounding instruction that
+catches the ones that get past it. Asked what the tuition is — which these
+documents never say — it says it doesn't have enough information instead of
+inventing a number.
 
 ## Chunking Strategy
 
-**Chunk size:**
-**Overlap:**
+**Chunk size:** 600 characters
+**Overlap:** 0 characters
 
-<!-- What about YOUR documents made you pick these numbers? Short posts and
-     long sectioned guides don't want the same chunking, and "800 seemed
-     reasonable" earns nothing. Point at something you noticed when you read
-     the documents in Milestone 1.
+I measured the corpus before picking either number. `campus_life` is 88
+documents of 178 to 549 characters, 2 to 5 paragraphs each, median paragraph 93
+characters. Every document is one person writing about one thing: one hall, one
+course, one dining hall.
 
-     If you changed your mind partway through, say so and say why. That's worth
-     more than pretending you got it right first time.
+**600 because the longest document is 549.** That puts the cutoff just above the
+corpus with 51 characters of margin, which makes "one post, one chunk" a
+decision rather than an accident. At the default of 800 the same thing happened,
+but only because 800 was comfortably larger than anything here — I'd have been
+taking credit for a number I never chose. Going smaller would split posts that
+are already a single thought, and the median paragraph of 93 characters is far
+too small to stand alone: "Best time to do laundry here is Tuesday or Wednesday
+morning" is only a fact if you know which building.
 
-     Milestone 3. -->
+**Overlap 0 because nothing gets cut.** Overlap exists so a sentence sliced down
+the middle is still readable in one of the two pieces. My `split_documents`
+never splits inside a paragraph, and prepends the document's title line to every
+chunk, so there is no severed context to rescue. Keeping overlap would copy text
+into the index twice, and near-duplicate chunks are the exact problem this
+corpus already has too much of — seven laundry files that differ by one line.
+
+**What the chunker actually does**, in `chunker.py::split_documents`:
+
+1. Never cut inside a paragraph; pack whole paragraphs up to the budget.
+2. Prepend the document's title line to every chunk, including continuations.
+3. A document that fits stays whole.
+
+Rule 2 is the one I care about. That title line is the only thing separating
+`housing_aldridge_hall_laundry.txt` from six near-identical siblings, and it
+appears exactly once, at the top. A chunk that loses it still retrieves for a
+laundry question and still reads like a complete answer — which is worse than
+not retrieving at all. It's acceptance criterion 4, enforced in the chunker
+rather than hoped for.
+
+**What changed, and what didn't.** On `campus_life` this produces 88 chunks,
+each byte-identical to its source document — the same count the starter's
+`fallback_split` produced. I want to be straight about that rather than dress it
+up: for this corpus the new chunker's output is the old chunker's output, and
+the work is in the reasoning and in the guarantees, not in a different number.
+
+The difference shows on documents long enough to actually split. Running both
+over `advice_threads`, `fallback_split` turns 23 documents into 26 chunks, and
+three of those are trailing fragments that are strict suffixes of the chunk
+before them — 59, 113, and 2 characters long. The 2-character one is `t.`. None
+carries a title, all duplicate text already in the index, and all three exist
+only because a document happened to land between `CHUNK_SIZE - CHUNK_OVERLAP`
+and `CHUNK_SIZE`. My chunker gives 27 chunks with no fragments, every one
+carrying its thread title and ending at a paragraph boundary.
+
+**I changed my mind once.** My first version kept the title only on
+continuation chunks, on the grounds that the first chunk already starts with it.
+That's true but fragile — it makes chunk 0 a special case, and the first time a
+document's opening paragraph is long enough to be split on its own, chunk 0
+stops being special and silently loses the guarantee. Prepending the title
+unconditionally means the rule holds for every chunk by construction, and for
+documents that fit it reconstructs the original text exactly, which is how I can
+claim all 88 are byte-identical.
 
 ## Sample Chunks
 
-<!-- Five chunks, pasted as text. Label each one and name the file it came from
-     AND the function that produced it — the grader checks your code against
-     what you claim here.
+From `python app.py chunks -n 5`, 5 of 88.
 
-     `python app.py chunks -n 5` prints all three for you. Copy them straight
-     across.
-
-     Milestone 3. -->
-
-**Chunk 1** — source: `` — produced by: ``
+**Chunk 1** — source: `admin_add_drop_deadline.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+On the add/drop deadline
+
+You can add a course through the end of the second week. Dropping is a longer window — through the end of week six — but a drop after week two shows as a W on your transcript. Nothing anywhere on the registrar's site says this plainly, and students find out from each other.
 ```
 
-**Chunk 2** — source: `` — produced by: ``
+**Chunk 2** — source: `course_biol_160.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+BIOL 160 Cell Biology
+
+I lived here my sophomore year. Format is lecture three times a week with a weekly lab. Assessment: four unit tests and a cumulative final. Not curved.
+
+Expect 9 to 11 hours a week, the heaviest first-year course by reputation.
+
+The one piece of advice: the unit tests come fast, roughly every three weeks; falling behind once is very hard to recover from.
 ```
 
-**Chunk 3** — source: `` — produced by: ``
+**Chunk 3** — source: `course_hist_118_workload.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+Workload for HIST 118 Modern World History
+
+People keep asking so: a lot of reading, about 120 pages a week, but no problem sets. That's real time, not optimistic time.
+
+It's front-loaded — the first month is heavier than the rest, partly because you're learning the format.
 ```
 
-**Chunk 4** — source: `` — produced by: ``
+**Chunk 4** — source: `dining_pellew_dining_hall_followup.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+Re: Pellew Dining Hall
+
+Adding to what people have said about Pellew Dining Hall. The wait figure of 12 to 18 minutes at peak matches what I've seen. If you're trying to eat between classes, go before 11:45 and it's a different building entirely.
+
+Also worth saying: the furthest hall from anywhere, next to the athletics centre. Nobody tells you this at orientation.
 ```
 
-**Chunk 5** — source: `` — produced by: ``
+**Chunk 5** — source: `housing_innisfree_hall.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+Innisfree Hall — what it's actually like
+
+Transferred in last year, so take this with a grain of salt. Built 1991, renovated 2022. Rooms are doubles arranged as pairs sharing one bathroom between two rooms.
+
+The good: the shared-bathroom-between-two-rooms arrangement is the best compromise on campus.
+
+The bad: no air conditioning, which matters for the first three weeks of September.
+
+Laundry costs $1.75 wash, $1.75 dry, app-based. On noise: moderate; the building is L-shaped and the short wing is much quieter.
 ```
+
+Every one of the five opens with the line that says what it's about, and every
+one ends at a paragraph boundary. Checking the rule across the whole index
+rather than the sample: 88 of 88 chunks contain their source document's first
+line verbatim, which is acceptance criterion 4.
+
+Chunk 5 is the one worth reading twice. Innisfree charges **$1.75 wash** — the
+same as Aldridge. That collision is why my test question about Aldridge laundry
+asks how you pay rather than what it costs, and it's the whole reason criterion
+4 exists: strip the title line off that chunk and there is nothing left in it
+that says which building it describes.
 
 ## Sample Answer
 
-<!-- One complete question and answer, pasted as text, with the source line
-     visible. Milestone 4. -->
-
-**Question:**
+**Question:** How do you pay for laundry in Aldridge Hall?
 
 **Answer:**
 
 ```
+  (best distance 0.293, cutoff 0.75)
+
+In Aldridge Hall, laundry is card only.
+
+Source: housing_aldridge_hall.txt (and housing_aldridge_hall_laundry.txt)
+
+Sources retrieved: housing_aldridge_hall.txt, housing_aldridge_hall_laundry.txt, housing_calder_annexe_laundry.txt, housing_innisfree_hall_laundry.txt, housing_old_brewhouse_laundry.txt
 ```
 
-**My relevance cutoff:**
+I picked this one because it's the hardest question I wrote. Look at the
+retrieved sources: alongside the two Aldridge files it pulled back the laundry
+documents for Calder Annexe, Innisfree Hall and Old Brewhouse — three
+near-identical documents that differ from the right one by a single line. It
+answered from the correct building anyway, and cited both Aldridge files rather
+than a sibling.
 
-<!-- The number you set in config.py, and how you got there.
-
-     You ran five questions your corpus covers and the five in OUT_OF_SCOPE
-     that it clearly doesn't, and wrote down the best distance for each. What
-     did those two groups look like? Where was the gap? Put the actual numbers
-     here — the table below wants all ten rows.
-
-     Milestone 4. -->
+**My relevance cutoff:** 0.75
 
 | Question | In corpus? | Best distance |
 |---|---|---|
-|  |  |  |
+| After what time does the salad bar at Kestrel Commons wilt? | Yes | 0.229 |
+| How late in the term can I declare a course pass/fail? | Yes | 0.215 |
+| How do you pay for laundry in Aldridge Hall? | Yes | 0.293 |
+| How many hours a week outside class should I expect CS 210 to take? | Yes | 0.270 |
+| What time does the library close during reading week? | Yes | 0.412 |
+| What is the capital of Mongolia? | No | 0.825 |
+| How do I change the oil in a diesel engine? | No | 0.934 |
+| Who won the 1994 World Cup? | No | 0.886 |
+| What is the recommended dosage of ibuprofen for a headache? | No | 0.844 |
+| How do I write a for loop in Rust? | No | 0.896 |
+
+The two groups don't overlap at all: in-corpus tops out at 0.412, out-of-corpus
+bottoms out at 0.825, a gap of 0.413 with nothing in it. The midpoint is 0.618,
+and the starter's default of 0.6 sits almost exactly there.
+
+**So I nearly kept 0.6, and it would have been wrong.** The gap looks that clean
+because both groups are rigged: I wrote the five in-corpus questions already
+knowing the answers, and the five out-of-scope ones are about Mongolia and
+diesel engines. Neither group looks like a question a real student types.
+
+So I measured a third group — ten vaguer questions this corpus genuinely does
+answer:
+
+| Question | Best distance | Nearest document |
+|---|---|---|
+| laundry | 0.408 | `housing_old_brewhouse_laundry.txt` |
+| is it loud at night | 0.514 | `housing_morrow_house_noise.txt` |
+| can I get my money back on a textbook | 0.555 | `money_textbooks.txt` |
+| what happens if I fail something | 0.613 | `admin_pass_fail_option.txt` |
+| is parking a nightmare | 0.613 | `admin_parking_permits.txt` |
+| how much walking is there | 0.631 | `transit_walking.txt` |
+| how do I get a doctor's appointment | 0.636 | `health_center.txt` |
+| do I need a coat | 0.663 | `winter_gear.txt` |
+| where do people study | 0.680 | `course_econ_101.txt` |
+| what's the food like | 0.706 | `dining_kestrel_commons.txt` |
+
+Every one of those is answerable from my documents, and **a cutoff of 0.6
+refuses six of them.** That's the number the curated groups hid.
+
+0.75 sits above that 0.706 ceiling and below the 0.825 floor of the out-of-scope
+group. It admits the vague-but-answerable and still refuses all five out-of-scope
+questions, so criterion 3 holds.
+
+**What 0.75 does not fix, and no number would.** I also tried eight
+campus-flavoured questions the corpus can't answer:
+
+| Question | Best distance |
+|---|---|
+| how much is tuition | 0.552 |
+| what is the acceptance rate | 0.699 |
+| when is spring break | 0.708 |
+| where is the football stadium | 0.717 |
+| how do I get a scholarship for graduate school | 0.726 |
+| how do I join a fraternity | 0.735 |
+| who is the university president | 0.742 |
+| what is the mascot | 0.898 |
+
+These land *inside* the in-corpus range — "how much is tuition" at 0.552 is
+closer than seven questions my corpus genuinely answers. There is no threshold
+that separates them, because distance measures whether text looks similar, not
+whether it contains an answer. Lowering the cutoff to exclude them would refuse
+most of the real questions in the table above.
+
+That's what the second layer is for, and `gate.py` says so outright: the gate
+catches the clear misses, the prompt catches the near ones. I checked both ends
+rather than assuming:
+
+```
+$ python app.py ask "who is the university president"
+  (best distance 0.742, cutoff 0.75)
+I don't have enough information to answer who the university president is.
+
+$ python app.py ask "how much is tuition"
+  (best distance 0.552, cutoff 0.75)
+I don't have enough information to answer this question.
+```
+
+Both passed the gate and both were refused by the model, from documents that
+genuinely don't contain the answer. So 0.75 is set to do the gate's actual job —
+stopping the clear misses — rather than a job it can't do.
+
+**One prediction I got wrong.** In criterion 3 I wrote that the ibuprofen
+question would be the out-of-scope one most likely to slip through, because
+`health_center.txt` gives it neighbouring vocabulary. It came back at 0.844, the
+second *furthest* of the five, and its nearest document was `money_textbooks.txt`
+— not the health centre at all. The closest out-of-scope question was Mongolia at
+0.825, matching `course_hist_118_exams.txt`, which makes sense in hindsight:
+history exams, capital cities. I was reasoning about topic; the embedding was
+reasoning about wording.
 
 ## How I Used AI
 
-<!-- Two specific moments. For each: what you asked for, what came back, and
-     what you changed about it.
+I built this with Claude Code (Claude Opus 5) throughout. Both moments below are
+ones where what came back looked right and wasn't, and the fix came from checking
+it against the corpus rather than from reading it again.
 
-     "I asked Claude to write the chunking function from my notes. It ignored
-     the overlap, so I added that myself" is the level of detail we're after.
-     "I used AI to help me code" is not.
+**1. The test question whose answer couldn't fail.** I asked for five test
+questions with an `expects` string for each, in Milestone 2. For the laundry
+question it produced the obvious thing — "What does it cost to wash a load of
+laundry in Aldridge Hall?" with `expects` of `1.75` — which is a specific
+question with a specific numeric answer, exactly what the milestone asks for.
 
-     Milestone 5. -->
+Before accepting it I grepped every `expects` string against all 88 documents to
+see how many could match. `1.75` matched **nine**, because Innisfree Hall charges
+$1.75 to wash as well. An answer that retrieved the wrong building entirely would
+have contained "1.75" and scored as correct. The question was fine; the way of
+checking it was broken, and the whole point of writing `expects` before seeing
+results is that it can fail.
 
-**1.**
+I changed the question to "How do you pay for laundry in Aldridge Hall?" with
+`expects` of `card only` — every other hall is app-based, coin-only, or
+coin-or-card, so that string appears in the Aldridge files and nowhere else. The
+general lesson went into my notes: an `expects` that matches many documents
+measures luck, not retrieval. That collision is also why acceptance criterion 4
+exists.
 
-**2.**
+**2. The relevance cutoff that the evidence appeared to confirm.** In Milestone 4
+I asked for the two groups of distances the milestone calls for. They came back
+cleanly separated — my five questions at 0.215 to 0.412, the five out-of-scope
+ones at 0.825 to 0.934 — with a midpoint of 0.618, and the reasoning was that the
+starter's default of 0.6 sits in the gap and should stay. Every number in that
+argument is correct.
+
+It's still the wrong conclusion, because both groups are rigged. I wrote the
+in-corpus questions already knowing the answers, so they reuse the documents'
+own wording, and the out-of-scope ones are about Mongolia and diesel engines.
+Nothing in either group resembles what a student actually types, so the clean gap
+between them is an artifact of how I chose the questions.
+
+So I measured a third group that the milestone doesn't ask for: ten vaguely
+worded questions the corpus genuinely answers. They ran 0.408 to 0.706, which
+means **a cutoff of 0.6 refuses six of them** — "what's the food like", "where do
+people study", "do I need a coat". I set the cutoff to 0.75 instead. The change
+wasn't catching a wrong number; it was noticing that a confident argument had
+been built on a sample chosen to make it true.
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
