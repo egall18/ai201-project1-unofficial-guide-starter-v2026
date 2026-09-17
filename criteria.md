@@ -41,7 +41,8 @@ that's the one failure this corpus is actually built to teach me.
 
 ## 2. Every answer names a source
 
-Every answer the system produces names at least one source document.
+Every answer the system produces names at least one source document — 5 of 5
+answers, on each of the three runs.
 
 **Scored as:** the answer text contains at least one filename that exists in
 `corpora/campus_life/documents/`. A filename the model invented doesn't count.
