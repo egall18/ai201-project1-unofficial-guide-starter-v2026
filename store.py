@@ -63,7 +63,14 @@ class _OnnxEmbedder:
     def __init__(self):
         from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
-        self._ef = ONNXMiniLM_L6_V2()
+        # Left to itself, Chroma hands ONNX Runtime every provider the machine
+        # reports, and CoreML sorts first on a Mac. On this one it fails partway
+        # through a batch with "Unable to compute the prediction using a neural
+        # network model", which stops indexing after the chunking line — so the
+        # collection ends up empty and the next `ask` complains about zero
+        # results instead. CPU is the provider that works everywhere; the
+        # vectors are identical either way.
+        self._ef = ONNXMiniLM_L6_V2(preferred_providers=["CPUExecutionProvider"])
 
     def encode(self, texts, show_progress_bar: bool = False):
         return [vector.tolist() for vector in self._ef(list(texts))]
