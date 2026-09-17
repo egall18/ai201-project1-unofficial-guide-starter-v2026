@@ -22,12 +22,44 @@ names a target of "4 of 5", and four of three is not a thing.
 """
 
 QUESTIONS = [
-    # {"question": "...", "expects": "..."},
-    {"question": "", "expects": ""},
-    {"question": "", "expects": ""},
-    {"question": "", "expects": ""},
-    {"question": "", "expects": ""},
-    {"question": "", "expects": ""},
+    # One per document family — dining, admin, housing, courses, library — so a
+    # failure points at a kind of document rather than at one unlucky file.
+    # Every `expects` is a number or a date, because those are either in the
+    # answer or they aren't. Nothing here can be answered by a sentence that
+    # sounds right.
+
+    # dining_kestrel_commons.txt, and again in its _followup. The only fact in
+    # the corpus stated twice in two files, which makes it the one question
+    # where I get to see what retrieval does with a duplicate.
+    {"question": "After what time does the salad bar at Kestrel Commons wilt?",
+     "expects": "1:30"},
+
+    # admin_pass_fail_option.txt. The deadline is the whole point of the
+    # document — it's late enough that you can decide after your midterm.
+    {"question": "How late in the term can I declare a course pass/fail?",
+     "expects": "week eight"},
+
+    # housing_aldridge_hall_laundry.txt. Seven buildings have a laundry file
+    # and they are near-identical boilerplate — only the price and payment line
+    # differs — so grabbing the wrong hall gives a confident wrong answer
+    # rather than an obvious miss.
+    #
+    # Asking the PRICE would have been the natural question, and it's the wrong
+    # one: Innisfree also charges $1.75 to wash, so "1.75" can't tell a correct
+    # answer from a lucky one. Payment method is unique to this hall — everyone
+    # else is app-based, coin-only, or coin-or-card.
+    {"question": "How do you pay for laundry in Aldridge Hall?",
+     "expects": "card only"},
+
+    # course_cs_210_workload.txt. Eight courses have a workload file in the
+    # same shape, so this is the same wrong-neighbour risk as the laundry one.
+    {"question": "How many hours a week outside class should I expect CS 210 to take?",
+     "expects": "8 to 10"},
+
+    # study_library_hours.txt. Reading week closes EARLIER than term, which is
+    # backwards — so an answer that guesses from common sense gets it wrong.
+    {"question": "What time does the library close during reading week?",
+     "expects": "10pm"},
 ]
 
 # Questions from a different world entirely. Your gate should refuse all five.
