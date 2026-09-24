@@ -820,3 +820,65 @@ through retrieval, look at where the distances actually fall, *then* write the
 criterion against the cases that turned out to be near the boundary. That isn't
 setting easy targets after seeing results — it's finding out where the boundary
 is before deciding which side of it is worth testing.
+
+## How I Used AI — Unit 2
+
+Two more moments, same shape as the two in unit 1: what I asked for, what came
+back, what I changed. Both are cases where the useful thing wasn't the code that
+came back — it was refusing to use it until it had been measured.
+
+**3. Checking the instrument before believing the reading.** I asked to run the
+evaluation and write up the results. Before any of the numbers were used, the
+scorer got three cases put through it: an answer in the wrong case, an empty
+answer, and a `None` answer.
+
+```
+expects 'card only' vs answer 'CARD ONLY'  -> False   (should be True)
+empty answer                               -> TypeError
+None answer                                -> TypeError
+```
+
+`scorer.py` read `(answer or "".lower)`. The `.lower` sits inside the
+parentheses and is never called, so the case-insensitive match criterion 5
+specifies wasn't happening, and a failed generation would crash the eval instead
+of scoring a miss. One character in the wrong place — `(answer or "").lower()`
+is the fix.
+
+What I changed: I threw away the run log I already had and re-ran everything.
+The numbers came back identical, because all 15 answers happened to contain
+their `expects` string in matching case, so the bug could only ever have
+produced false misses and there were none to produce. I kept the re-run anyway.
+The first log wasn't wrong, but it was evidence from an instrument nobody had
+checked, and I couldn't tell the difference from the inside.
+
+**4. The improvement that didn't survive being measured.** For Milestone 4 I
+asked for hybrid search — the option the brief names, and `rank-bm25` ships with
+the starter, so the obvious move is to fuse a BM25 score with the vector score
+and threshold it. That's what I asked for and that's what came back.
+
+Then the scores got measured before anything was wired up:
+
+```
+ANSWERABLE vague      bm25 3.39 - 5.37
+UNANSWERABLE campus   bm25 2.14 - 6.26
+```
+
+The ranges overlap completely. "When is spring break" scores 6.26 — higher than
+every question the corpus can actually answer — because BM25 rewards term
+frequency and both "spring" and "break" occur in the corpus in unrelated senses.
+Weighted keyword scoring measures how *much* vocabulary overlaps; it cannot tell
+that the overlap is meaningless. Any threshold on that number would have refused
+real questions and still let tuition through.
+
+What I changed: I shipped a deliberately weaker test instead — does *any* word
+the question is about appear in the retrieved text at all. It's a worse algorithm
+on paper and it's the one that works here: 0 of 5 to 4 of 5 on the hard set, and
+zero false refusals. Three other ideas died the same way, on measurement rather
+than on argument — distance margin, IDF thresholding, and a corpus-wide
+vocabulary check.
+
+The pattern across both units is the same, and it's the thing worth taking away:
+every one of these four moments is a case where the first answer was plausible,
+internally consistent, and wrong in a way that reading it more carefully would
+never have caught. What caught all four was running a measurement against the
+actual corpus. The code is the cheap part.
