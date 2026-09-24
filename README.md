@@ -724,17 +724,99 @@ real questions. One question in five is the cost of not refusing anything real.
 
 ## What's Still Broken
 
-<!-- For each criterion still missed after your fix: what you'd do about it,
-     and why you stopped where you did.
+No criterion was missed, before or after, so there is no missed target to report
+a plan for. Everything below is broken anyway, and the fact that my criteria
+score it 5 for 5 is itself one of the entries.
 
-     "I ran out of time" is fine if it's true. Pretending nothing is left is
-     not.
+**1. "When is spring break" still gets through.** Best distance 0.708, under the
+0.75 cutoff, and it has lexical support: both "spring" and "break" appear in the
+corpus, "break" in a single document in a completely unrelated sense. So the
+gate sees a connection that means nothing and lets it reach the model.
 
-     Milestone 5. -->
+*What I'd do:* require the matching word to be rare — a document frequency of 1
+or 2 rather than any occurrence — so an incidental hit doesn't count as support.
+*Why I stopped:* I measured that idea and it doesn't work. "Break" appears in one
+document and "walking" appears in one document. Identical rarity, and "how much
+walking is there" is a question my corpus genuinely answers. Any rule sharp
+enough to refuse the first refuses the second, and a false refusal on a real
+question is the worse failure. I'd rather ship one known hole than trade it for
+an unknown one.
+
+**2. The lexical check tests for a connection, not a relevant one.** This is
+entry 1 stated generally. `has_lexical_support` asks whether *any* content word
+appears in the retrieved text — the weakest possible question — and it works
+here because the questions that defeat the distance gate tend to be about things
+the corpus has no vocabulary for at all. That's a property of this corpus, not a
+general result. On a corpus with broader vocabulary the same check would pass
+almost everything and the improvement would evaporate.
+
+**3. Criterion 3 measures something easier than it sounds like it measures.**
+It reads as "the system refuses what it can't answer" and it actually tests five
+questions about Mongolia, diesel engines and the 1994 World Cup. It scored 5 of
+5 before my change and 5 of 5 after, while the thing it appears to be about went
+from 0 of 5 to 4 of 5 — entirely invisibly. A criterion that can't move while
+the system improves fourfold isn't measuring the system.
+
+*What I'd do:* replace the five `OUT_OF_SCOPE` questions with campus-flavoured
+ones the corpus can't answer. *Why I stopped:* I'm not willing to rewrite a
+target after seeing my results, even in the direction of making it harder. The
+replacement set and its numbers are recorded in the Verdicts section so the next
+unit can start from them.
+
+**4. Criterion 4 cannot fail.** 88 of 88 is true by construction — the chunker
+prepends the title line to every chunk, so the only way to lose the property is
+to break the chunker. It was written as a guardrail for a chunk-size change I
+then never made. It has cost nothing and taught nothing across two units.
+
+**5. Nothing checks that the source named is the right one.** Criterion 2 accepts
+any filename that exists; criterion 5 accepts any answer containing the expected
+string. An answer that gets the laundry price right and credits Innisfree instead
+of Aldridge passes both. I know this is a live risk rather than a theoretical
+one, because it's why I rewrote my third test question in unit 1 — `1.75` matches
+nine documents. This was a criterion I wrote and then traded away when the
+self-check showed nothing was checking the answer itself; with five slots I
+judged an unchecked answer the worse hole. It's still a hole.
+
+**6. Untested stages.** Loading is never checked — a document silently dropped or
+mangled by `clean_text` would show up as a retrieval miss and I'd diagnose the
+wrong stage. There's no timing criterion either, so I have no idea whether this
+is fast enough for anyone.
 
 ## What I'd Do Differently
 
-<!-- Knowing what you know now — which of your five criteria would you write
-     differently, and why?
+**Criterion 4 is the one I'd rewrite, and I'd rewrite it as a property that can
+break.** "Every chunk carries its title line" was chosen to protect a change I
+was about to make and then didn't, which left a criterion that passes whatever
+happens. The version worth having names something the pipeline could plausibly
+get wrong — "no chunk is shorter than 150 characters or longer than
+`CHUNK_SIZE`", say, which would actually fail the moment a chunking strategy
+started producing fragments, exactly the defect I found in `fallback_split` on
+`advice_threads`. The test of a good criterion isn't whether it's true, it's
+whether I'd learn something from watching it go false.
 
-     Milestone 5. -->
+**Criterion 3 I'd write against questions from the same world as the corpus.**
+The whole point of a relevance gate is the near miss. Questions from another
+planet are the case that was never going to be hard, and choosing them made my
+gate look like it worked when it was refusing 0 of 5 of the questions that
+matter. If I'd written criterion 3 against tuition and term dates in unit 1, it
+would have failed in unit 2 — and then the improvement would have shown up in my
+run log as a number moving from 0 of 5 to 4 of 5, instead of as a paragraph
+explaining that my criteria couldn't see it.
+
+**The general lesson, which cost me both of those.** I chose my test cases and my
+targets at the same time, from the same intuitions, before I had any measurements
+— and both times I chose cases my system was already going to handle. Criteria 1
+and 5 were pitched at 4 of 5 because I predicted the near-identical laundry files
+would cost me one; retrieval pulled three rival halls and ranked Aldridge first
+anyway. My prediction about which `OUT_OF_SCOPE` question would come closest was
+wrong too — I said ibuprofen, because of `health_center.txt`, and it came back
+second-furthest at 0.844 with `money_textbooks.txt` as its nearest document.
+Mongolia was closest at 0.825.
+
+I was consistently reasoning about topic while the embedding was reasoning about
+wording, and every criterion I wrote inherited that mistake. What I'd do
+differently is measure first and set targets second: run a handful of questions
+through retrieval, look at where the distances actually fall, *then* write the
+criterion against the cases that turned out to be near the boundary. That isn't
+setting easy targets after seeing results — it's finding out where the boundary
+is before deciding which side of it is worth testing.

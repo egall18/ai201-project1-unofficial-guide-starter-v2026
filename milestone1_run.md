@@ -912,3 +912,44 @@ in one document in an unrelated sense — lexical support that means nothing. Th
 check tests whether a connection exists, not whether it's meaningful. Deliberate:
 requiring more than one matching word starts refusing real questions. One in five
 is the price of zero false refusals.
+
+---
+
+# Unit 2, Milestone 5 — what's still broken
+
+Six entries, none of them a missed criterion, because nothing missed:
+
+1. **"When is spring break" passes at 0.708.** Lexical support that means
+   nothing — "break" occurs in one document in an unrelated sense. Fix would be
+   to require a rare matching word; measured and rejected, because "break" df=1
+   and "walking" df=1 are identical and "how much walking is there" is real.
+2. **The lexical check tests for a connection, not a relevant one.** It works on
+   this corpus because the questions that defeat the distance gate are about
+   things the corpus has no vocabulary for. Property of this corpus, not a
+   general result.
+3. **Criterion 3 measures something easier than it sounds like.** Scored 5 of 5
+   before and after while the thing it appears to measure went 0 of 5 -> 4 of 5.
+   A criterion that can't move while the system improves fourfold isn't
+   measuring the system.
+4. **Criterion 4 cannot fail.** True by construction across two units.
+5. **Nothing checks the source named is the right one.** The criterion I traded
+   away at the self-check. `1.75` matches nine documents — this is live, not
+   theoretical.
+6. **Loading and speed untested.** A document dropped by `clean_text` would show
+   up as a retrieval miss and I'd diagnose the wrong stage.
+
+## What I'd do differently
+
+Criterion 4 rewritten as something that can break (a length bound would have
+caught the `fallback_split` fragments). Criterion 3 written against near-misses
+from the corpus's own world.
+
+The general lesson: I chose test cases and targets at the same time, from the
+same intuitions, before I had any measurements — and both times chose cases the
+system was already going to handle. Same error as the ibuprofen prediction: I
+reasoned about topic, the embedding reasoned about wording.
+
+Measure first, set targets second. Run questions through retrieval, see where
+the distances fall, THEN write the criterion against whatever turned out to sit
+near the boundary. That isn't setting easy targets after seeing results — it's
+finding the boundary before deciding which side is worth testing.
