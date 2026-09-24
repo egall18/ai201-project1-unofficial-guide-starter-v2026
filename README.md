@@ -334,27 +334,112 @@ been built on a sample chosen to make it true.
 
 ## Run Log — Before
 
-<!-- Your five criteria, three runs each. `python run_eval.py --label before`
-     runs the questions, puts the OUT_OF_SCOPE ones through the gate, and
-     writes it all into results/ for you. Targets come from criteria.md; the
-     verdict column is your call.
-
-     Criterion 3 is measured in one deterministic pass rather than three, so
-     the same number goes in all three run columns. That's correct, not lazy.
-
-     Milestone 1. -->
+`python run_eval.py --label before` — full log in
+`results/run_2026-09-23_1753_before.md`. Corpus `campus_life`, top-k 5, cutoff
+0.75, caching off, 15 model calls.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 4. Every chunk carries its title line | 88 of 88 | 88 of 88 | 88 of 88 | 88 of 88 | MET |
+| 5. Answer contains the `expects` string | 4 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
 
-<!-- Underneath, paste the REAL output for each criterion from one of your
-     runs — the actual text your system produced, not a description of it.
-     Name the file and function that produced it. -->
+Criteria 1, 3 and 4 are measured once rather than three times. Retrieval is
+deterministic, the gate is a comparison against a fixed number, and chunking
+doesn't depend on the question — three passes would produce the same three
+answers, so the same figure goes in all three columns.
+
+### Real output
+
+**Criterion 1** — retrieval, `store.py::search`, over chunks from
+`chunker.py::split_documents`. The Aldridge laundry question, the hardest one I
+wrote:
+
+```
+### How do you pay for laundry in Aldridge Hall? — run 1
+- Best distance: 0.2928 (passed the gate)
+- Sources retrieved: housing_aldridge_hall.txt, housing_aldridge_hall_laundry.txt, housing_calder_annexe_laundry.txt, housing_innisfree_hall_laundry.txt, housing_old_brewhouse_laundry.txt
+```
+
+Three rival halls came back alongside the right one — Calder Annexe, Innisfree
+and Old Brewhouse — which is the near-duplicate competition criterion 1 was
+written to catch. `housing_aldridge_hall_laundry.txt` is in the set, so it
+counts.
+
+**Criterion 2** — the source line, produced by `generate.py::answer_from_chunks`
+under the instruction in `generate.py::GROUNDING_INSTRUCTION`:
+
+```
+In Aldridge Hall, laundry is card only. 
+
+Source: housing_aldridge_hall_laundry.txt (also mentioned in housing_aldridge_hall.txt)
+```
+
+All 15 answers across the three runs named a filename that exists in
+`corpora/campus_life/documents/`.
+
+**Criterion 3** — the gate, `gate.py::check` via
+`run_eval.py::check_out_of_scope`:
+
+```
+| Out-of-scope question | Best distance | Gate |
+|---|---|---|
+| What is the capital of Mongolia? | 0.825 | refused |
+| How do I change the oil in a diesel engine? | 0.934 | refused |
+| Who won the 1994 World Cup? | 0.886 | refused |
+| What is the recommended dosage of ibuprofen for a headache? | 0.844 | refused |
+| How do I write a for loop in Rust? | 0.896 | refused |
+```
+
+Refused 5 of 5. The closest was 0.825 against a cutoff of 0.75 — a margin of
+0.075, the narrowest of the five.
+
+**Criterion 4** — chunking, `chunker.py::split_documents`, checked across the
+whole index rather than the printed sample:
+
+```
+CRITERION 4 — chunks carrying their title line: 88 of 88
+```
+
+**Criterion 5** — the answer text, scored by `scorer.py::judge`:
+
+```
+### What time does the library close during reading week? — run 1
+- Best distance: 0.4115 (passed the gate)
+
+The library closes at 10pm during reading week (from study_library_hours.txt).
+```
+
+`expects` for that question is `10pm`, and the answer contains it. 15 of 15
+across the three runs.
+
+### A bug I found in my own scorer before trusting any of this
+
+The first version of `scorer.py` read:
+
+```python
+return expects.strip().lower() in (answer or "".lower)
+```
+
+The `.lower` is inside the parentheses and never called. Two consequences: the
+answer is never lower-cased, so the case-insensitive match criterion 5 specifies
+wasn't happening, and an empty or `None` answer raises
+`TypeError: argument of type 'builtin_function_or_method' is not iterable`
+instead of scoring as a miss.
+
+```
+expects 'card only' vs answer 'CARD ONLY'  -> False   (should be True)
+empty answer                               -> TypeError
+```
+
+Fixed to `(answer or "").lower()` and re-ran everything above with the corrected
+scorer. The numbers didn't change — all 15 answers happened to contain their
+`expects` string in matching case, so the bug could only ever have produced
+false *misses*, and there were none to produce. But the run log I had before the
+fix was evidence from an instrument I hadn't checked, and I'd rather report
+numbers I can defend than numbers that happened to be right.
 
 ## Verdicts
 

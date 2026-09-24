@@ -635,3 +635,79 @@ housing_old_brewhouse_laundry.txt
 It pulled back three *other* halls' laundry documents alongside the right one —
 the near-duplicate competition criterion 1 predicted is real — and answered from
 the correct building anyway, citing both Aldridge files rather than a sibling.
+
+---
+
+# Unit 2, Milestone 1 — run log (before)
+
+## A bug in the scorer, found before trusting the run
+
+`scorer.py` as first written:
+
+```python
+return expects.strip().lower() in (answer or "".lower)
+```
+
+The `.lower` sits inside the parentheses and is never called.
+
+```
+expects 'card only' vs answer 'CARD ONLY'  -> False      (should be True)
+empty answer                               -> TypeError
+None answer                                -> TypeError
+```
+
+So the case-insensitive match criterion 5 specifies wasn't happening, and a
+failed generation would crash the eval instead of scoring a miss. Fixed to
+`(answer or "").lower()`, then re-ran the whole eval.
+
+**The numbers didn't change.** All 15 answers contained their `expects` string
+in matching case, so the bug could only ever have produced false misses and
+there were none. The point isn't that it changed the result — it's that the
+earlier run log was evidence from an instrument I hadn't checked.
+
+## Results — everything MET
+
+| Criterion | Target | Result | Verdict |
+|---|---|---|---|
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5 of 5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5 of 5, all three runs | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5 of 5 | MET |
+| 4. Every chunk carries its title line | 88 of 88 | 88 of 88 | MET |
+| 5. Answer contains the `expects` string | 4 of 5 | 5 of 5, all three runs | MET |
+
+15 model calls, 9,478 tokens. Log: `results/run_2026-09-23_1753_before.md`.
+
+## The thing to deal with in Milestone 2
+
+**Nothing missed. Every criterion cleared its target, and three cleared it with
+room to spare.** The README is direct about what that means: missing a target
+costs nothing, setting one so easy you can't miss it does.
+
+Honest read on which targets were soft:
+
+- **Criterion 4 is the softest, and I knew it when I wrote it.** 88 of 88 is
+  true by construction — `split_documents` prepends the title line to every
+  chunk, so the only way to fail is to break the chunker. I wrote it as a
+  guardrail for a chunk-size change I then never made. It has taught me nothing.
+- **Criterion 3 passed 5 of 5, but the margin is thin where it counts.** The
+  closest out-of-scope question sits at 0.825 against a 0.75 cutoff — 0.075 of
+  room. And the near-miss probes from Milestone 4 (tuition at 0.552, university
+  president at 0.742) are refused by the *prompt*, not the gate, so criterion 3
+  isn't measuring what I'd want a stranger to think it measures.
+- **Criteria 1 and 5 at 4 of 5 were set expecting the near-duplicate families to
+  cost me one.** They didn't. The retrieval pulled three rival halls' laundry
+  files and still ranked Aldridge first.
+
+Milestone 2 decides what to do about that. The options, as I see them:
+
+1. Report MET honestly, say the targets were soft, name which one I'd tighten
+   and to what. The README explicitly allows this and asks for exactly that
+   sentence.
+2. Tighten a target now and re-run — but a target rewritten after seeing results
+   is worth less than one that held, and lowering-after-missing is explicitly
+   penalised. Raising-after-passing is the mirror image and I'd want to be
+   careful about it.
+3. Harden the *test* rather than the target: the near-miss questions are the
+   real gap, and criterion 3's `OUT_OF_SCOPE` list is five questions from
+   another planet. Swapping those for campus-flavoured ones the corpus can't
+   answer would make criterion 3 measure the thing that actually fails.
