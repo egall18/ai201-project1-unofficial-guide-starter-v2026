@@ -443,22 +443,72 @@ numbers I can defend than numbers that happened to be right.
 
 ## Verdicts
 
-<!-- MET or MISSED for each of the five, against the target you wrote last
-     unit — not a new one. Plus a sentence on how you decided. That sentence
-     matters most where it was close.
-
-     If your target said 4 of 5 and your runs came out 4, 3, 4, that's a MISS.
-     The target has to hold, not show up occasionally.
-
-     Milestone 2. -->
+Judged against the targets in `criteria.md` as written in unit 1, not against
+anything I'd write now.
 
 | # | Criterion | Verdict | How I decided |
 |---|---|---|---|
-| 1 |  |  |  |
-| 2 |  |  |  |
-| 3 |  |  |  |
-| 4 |  |  |  |
-| 5 |  |  |  |
+| 1 | Retrieved chunk contains the answer | MET | Target 4 of 5; got 5 of 5. Deterministic, so "held on every run" and "held once" are the same claim here. Scored as: the document containing that question's `expects` string is among the five retrieved — checked by substring, not by reading the chunks and deciding. |
+| 2 | Every answer names a source | MET | Target 5 of 5, the only target with no slack. All 15 answers across three runs contained a filename that exists in `corpora/campus_life/documents/`. I checked existence rather than shape, because the criterion was written to exclude a filename the model invented. |
+| 3 | Gate stops out-of-corpus questions | MET | Target 4 of 5; the gate refused all five. The only judgement was fixed in advance: the five questions are the ones in `OUT_OF_SCOPE`, decided before any results, so "clearly don't cover" wasn't something I got to interpret on the day. |
+| 4 | Every chunk carries its title line | MET | Target 88 of 88; got 88 of 88. Substring check of each source document's first line against its chunk, across the whole index rather than the printed sample of five. See the note below — this one passing means less than it looks. |
+| 5 | Answer contains the `expects` string | MET | Target 4 of 5; got 5 of 5 on all three runs. Scored by `scorer.py::judge`, which I had to fix before I could trust it — the case-insensitive match the criterion specifies wasn't happening. Same result after the fix. |
+
+### Nothing missed, so: were the targets set too low?
+
+Three of the five cleared their target with room to spare, and I'd rather name
+which ones were soft than present a clean sweep as if it were all earned.
+
+**Criterion 4 was too easy, and I knew it when I wrote it.** I said so in
+`criteria.md` at the time: at `CHUNK_SIZE` 600 nothing splits, so 88 of 88 is
+true by construction — `split_documents` prepends the title line to every chunk,
+and the only way to fail is to break the chunker itself. I wrote it as a
+guardrail against a chunk-size change I then never made. It has cost me nothing
+and taught me nothing, which is exactly the failure mode the brief warns about.
+
+**Criterion 3 measures the easy half of the problem.** It passed 5 of 5, but the
+five `OUT_OF_SCOPE` questions are about Mongolia, diesel engines and the 1994
+World Cup — a corpus about one campus was never going to rank them close. The
+questions that actually defeat the gate are the campus-flavoured ones I measured
+in unit 1: "how much is tuition" at 0.552 and "who is the university president"
+at 0.742 both sail past a 0.75 cutoff and are stopped by the grounding
+instruction instead. Criterion 3 reads like it measures "the system refuses what
+it can't answer". It measures "the system refuses questions about other
+planets."
+
+**Criteria 1 and 5 were pitched at 4 of 5 for a reason that didn't materialise.**
+I expected the near-identical document families to cost me one: seven laundry
+files differing by a single line, eight workload files in the same shape.
+Retrieval pulled three rival halls' laundry documents alongside the right one and
+still ranked Aldridge first. The prediction was wrong in the system's favour.
+
+**The one I'd tighten, and to what.** Criterion 3, from "at least 4 of 5" to
+**"at least 4 of 5, where the five questions are campus-flavoured questions the
+corpus does not answer — tuition, term dates, admissions, athletics, campus
+governance"**. That's the same number against a harder test, not a higher bar
+against the same one, and it would fail today — not narrowly. I measured the
+replacement set against the live index rather than asserting it:
+
+```
+cutoff 0.75
+  0.552  PASSED gate  how much is tuition
+  0.699  PASSED gate  what is the acceptance rate
+  0.708  PASSED gate  when is spring break
+  0.717  PASSED gate  where is the football stadium
+  0.742  PASSED gate  who is the university president
+
+gate would refuse 0 of 5 -- target is 4 of 5
+```
+
+**Zero of five.** Every one of those is a question this corpus cannot answer,
+and the gate passes all five straight through to the model. Criterion 3 scored
+5 of 5 against the questions I picked and would score 0 of 5 against questions a
+student would actually ask — same criterion, same cutoff, same system, only a
+test that isn't chosen in my favour.
+
+I'm recording that here rather than editing `criteria.md`, because a target I
+rewrite after watching it pass is worth less than one that held. The number to
+carry forward is 0 of 5.
 
 ## Diagnoses
 

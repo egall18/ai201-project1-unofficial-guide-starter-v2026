@@ -711,3 +711,58 @@ Milestone 2 decides what to do about that. The options, as I see them:
    real gap, and criterion 3's `OUT_OF_SCOPE` list is five questions from
    another planet. Swapping those for campus-flavoured ones the corpus can't
    answer would make criterion 3 measure the thing that actually fails.
+
+---
+
+# Unit 2, Milestone 2 — verdicts
+
+All five MET, judged against the unit-1 targets as written:
+
+| # | Criterion | Target | Result | Verdict |
+|---|---|---|---|---|
+| 1 | Retrieved chunk contains the answer | 4 of 5 | 5 of 5 | MET |
+| 2 | Every answer names a source | 5 of 5 | 5 of 5 ×3 | MET |
+| 3 | Gate stops out-of-corpus questions | 4 of 5 | 5 of 5 | MET |
+| 4 | Every chunk carries its title line | 88 of 88 | 88 of 88 | MET |
+| 5 | Answer contains the `expects` string | 4 of 5 | 5 of 5 ×3 | MET |
+
+## Which targets were soft
+
+**Criterion 4** — softest, and flagged as such in `criteria.md` when written. At
+CHUNK_SIZE 600 nothing splits, so 88 of 88 is true by construction. Guardrail
+for a chunk-size change I never made. Cost nothing, taught nothing.
+
+**Criterion 3** — measures the easy half. Passed 5 of 5 against Mongolia and
+diesel engines.
+
+**Criteria 1 and 5** — pitched at 4 of 5 expecting the near-duplicate families
+to cost one. They didn't; retrieval pulled three rival halls and still ranked
+Aldridge first. Prediction wrong in the system's favour.
+
+## The number worth carrying forward
+
+I claimed in a first draft that a harder criterion-3 test would fail "four of
+five". Measured it instead of asserting it:
+
+```
+cutoff 0.75
+  0.552  PASSED gate  how much is tuition
+  0.699  PASSED gate  what is the acceptance rate
+  0.708  PASSED gate  when is spring break
+  0.717  PASSED gate  where is the football stadium
+  0.742  PASSED gate  who is the university president
+
+gate refuses 0 of 5
+```
+
+**Zero.** Not four. The gate passes every campus-flavoured unanswerable question
+straight to the model. Criterion 3 scores 5 of 5 on the questions I picked and
+0 of 5 on questions a student would actually ask.
+
+That's the honest state of the system going into Milestone 3, and it's a
+sharper finding than any of the five verdicts.
+
+The tightening I'd make, recorded but NOT applied to criteria.md: criterion 3
+keeps "at least 4 of 5" but the five questions become campus-flavoured ones the
+corpus can't answer. Same number, harder test. Rewriting a target after watching
+it pass is worth less than one that held.
