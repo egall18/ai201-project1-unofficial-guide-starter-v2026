@@ -512,23 +512,96 @@ carry forward is 0 of 5.
 
 ## Diagnoses
 
-<!-- For each miss: which stage caused it, and how. The stage alone isn't
-     enough — you need the mechanism.
+**Nothing missed.** All five criteria MET, and the Verdicts section above says
+which targets were soft and which one I'd tighten. So there is no failing
+criterion to trace back to a stage.
 
-     Not a diagnosis: "Question 3 didn't work."
-     A diagnosis:     "Question 3 asks about laundry costs. The answer is in
-                       one sentence that got split across two chunks, so
-                       neither chunk on its own contains it."
+There is, however, a measured failure — the one the criteria don't catch. The
+gate refuses **0 of 5** campus-flavoured questions the corpus cannot answer.
+That's a real defect with a real mechanism, and diagnosing it is worth more than
+writing "nothing to diagnose" under a heading.
 
-     The five stages: loading → chunking → embedding → retrieval → generation.
+### The miss: the gate can't tell "close" from "answerable"
 
-     Look for a pattern. If three misses all ask about numbers, that's one
-     problem, not three.
+**Stage: embedding.** Not retrieval, and not the gate — both of those work
+exactly as written. `store.py::search` returns the nearest chunks and
+`gate.py::check` compares the best distance to a number. Neither is broken. The
+defect is in what the numbers they're passing around actually mean.
 
-     Missed nothing? Say so, then say honestly whether your targets were set
-     low, and which one you'd tighten and to what.
+**The mechanism.** `all-MiniLM-L6-v2` encodes what a passage is *about*. It does
+not encode whether a passage *answers a question*, and nothing downstream can
+recover a distinction the vector never carried. Here is the evidence, measured
+against the live index — distance, whether the corpus can actually answer it,
+and how many content words the question shares with the document it matched:
 
-     Milestone 3. -->
+```
+  dist  answerable  overlap  question -> nearest document
+ 0.552       False        0  'how much is tuition'            -> admin_transcript_requests.txt
+ 0.699       False        0  'what is the acceptance rate'    -> admin_pass_fail_option.txt
+ 0.708       False        0  'when is spring break'           -> winter_gear.txt
+ 0.717       False        0  'where is the football stadium'  -> housing_fenwick_court.txt
+ 0.742       False        0  'who is the university president'-> admin_wifi_and_accounts.txt
+
+ 0.514        True        1  'is it loud at night'            -> housing_morrow_house_noise.txt   ['loud']
+ 0.631        True        1  'how much walking is there'      -> transit_walking.txt              ['walking']
+ 0.663        True        1  'do I need a coat'               -> winter_gear.txt                  ['coat']
+ 0.680        True        1  'where do people study'          -> course_econ_101.txt              ['people']
+ 0.706        True        0  "what's the food like"           -> dining_kestrel_commons.txt
+```
+
+Read the two blocks against each other. **Every unanswerable question shares
+zero content words with the document it matched**, and four of the five still
+score better than a question the corpus genuinely answers. "How much is tuition"
+lands at 0.552 — closer than *four of the five answerable questions* — against
+`admin_transcript_requests.txt`, a document about transcripts costing $8. There
+is no shared word. What the embedding has noticed is a shape: *official
+university service, has a price*. That shape is correct, and it is not an answer.
+
+Meanwhile "what's the food like" matched `dining_kestrel_commons.txt`, which
+genuinely answers it — stir-fry station, salad bar, wait times — and scored
+0.706, further away than the tuition non-answer. **In this sample the distance
+ordering is anti-correlated with answerability.**
+
+### Why no cutoff can fix it
+
+This is the part that makes it a diagnosis rather than a complaint. The mean
+pairwise distance between the 88 chunks *of my own corpus* is **0.774**:
+
+```
+corpus homogeneity: mean pairwise distance between the 88 chunks = 0.774
+  (min 0.114, max 1.141)
+```
+
+Every unanswerable question above lands **nearer to its best-matching document
+(0.552–0.742) than two random documents of the corpus are to each other
+(0.774)**. My relevance cutoff of 0.75 already sits below the corpus's own mean
+internal distance.
+
+So asking the gate to separate "answerable" from "not" is asking a single scalar
+to resolve a difference finer than the corpus's own internal spread. Lower the
+cutoff and the vague-but-answerable questions go first — that was already
+measured in unit 1, where 0.6 refused six of ten real questions. Raise it and
+everything gets through. There is no value in between, because the two
+populations overlap in the only dimension the gate can see.
+
+### The pattern
+
+This is **one problem, not five**. All five near-misses fail identically: a
+campus-vocabulary question lands close to campus-vocabulary text, and closeness
+was never evidence of an answer. It is also why criterion 3 passes 5 of 5 — the
+`OUT_OF_SCOPE` questions are about Mongolia and diesel engines, so they differ
+from the corpus in *both* topic and register and land at 0.825–0.934, above the
+corpus's own 0.774 mean. **Criterion 3 only detects failures that are further
+away than my corpus is from itself.** Anything nearer than that is invisible to
+it, and "anything nearer than that" is every question a student would actually
+get wrong.
+
+### What this implies for the fix
+
+The signal the gate needs isn't in the embedding, so the fix has to add a signal
+rather than re-tune an existing one — something that asks whether the retrieved
+chunks contain what was asked about, not merely whether they resemble it. That's
+Milestone 4.
 
 ## The Improvement
 

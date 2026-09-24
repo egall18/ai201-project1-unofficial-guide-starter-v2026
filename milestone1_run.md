@@ -766,3 +766,77 @@ The tightening I'd make, recorded but NOT applied to criteria.md: criterion 3
 keeps "at least 4 of 5" but the five questions become campus-flavoured ones the
 corpus can't answer. Same number, harder test. Rewriting a target after watching
 it pass is worth less than one that held.
+
+---
+
+# Unit 2, Milestone 3 — diagnosis
+
+No criterion missed, so the Diagnoses section diagnoses the failure the criteria
+don't catch: the gate refuses 0 of 5 campus-flavoured unanswerable questions.
+
+## Stage: embedding
+
+Not retrieval, not the gate. `store.py::search` returns the nearest chunks and
+`gate.py::check` compares a number to a number; both do exactly what they say.
+The defect is in what those numbers mean.
+
+`all-MiniLM-L6-v2` encodes what a passage is about. It does not encode whether a
+passage answers a question, and nothing downstream can recover a distinction the
+vector never carried.
+
+## Evidence
+
+```
+  dist  answerable  overlap  question -> nearest document
+ 0.552       False        0  how much is tuition             -> admin_transcript_requests.txt
+ 0.699       False        0  what is the acceptance rate     -> admin_pass_fail_option.txt
+ 0.708       False        0  when is spring break            -> winter_gear.txt
+ 0.717       False        0  where is the football stadium   -> housing_fenwick_court.txt
+ 0.742       False        0  who is the university president -> admin_wifi_and_accounts.txt
+ 0.514        True        1  is it loud at night             -> housing_morrow_house_noise.txt
+ 0.631        True        1  how much walking is there       -> transit_walking.txt
+ 0.663        True        1  do I need a coat                -> winter_gear.txt
+ 0.680        True        1  where do people study           -> course_econ_101.txt
+ 0.706        True        0  what's the food like            -> dining_kestrel_commons.txt
+```
+
+Every unanswerable question shares **zero content words** with the document it
+matched, and four of five still beat a question the corpus genuinely answers.
+
+"How much is tuition" -> `admin_transcript_requests.txt` at 0.552. That document
+says official transcripts cost $8. No shared word. The embedding matched a
+shape: *official university service, has a price*. Correct, and not an answer.
+
+"What's the food like" -> the document that genuinely answers it, at 0.706 —
+**further away than the tuition non-answer**. Distance ordering is
+anti-correlated with answerability in this sample.
+
+## Why no threshold fixes it
+
+```
+mean pairwise distance between the 88 chunks of my own corpus = 0.774
+  (min 0.114, max 1.141)
+```
+
+Every unanswerable question lands nearer to its best document (0.552-0.742) than
+two random documents of the corpus are to each other (0.774). The cutoff of 0.75
+is already below the corpus's own mean internal distance.
+
+A single scalar is being asked to resolve a difference finer than the corpus's
+own spread. Lower it and the vague-but-answerable go first (0.6 refused six of
+ten real questions in unit 1). Raise it and everything passes. No value works,
+because the populations overlap in the only dimension the gate can see.
+
+## The pattern
+
+One problem, not five. And it explains criterion 3's perfect score: the
+OUT_OF_SCOPE questions differ from the corpus in both topic and register, so
+they sit at 0.825-0.934 — above the corpus's own 0.774 mean. **Criterion 3 only
+detects failures further away than my corpus is from itself.** Everything nearer
+is invisible to it, and everything nearer is what a student would actually ask.
+
+## Implication for Milestone 4
+
+The signal isn't in the embedding, so the fix must ADD a signal rather than
+re-tune one: check whether retrieved chunks contain what was asked about, not
+whether they resemble it.
