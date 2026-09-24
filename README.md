@@ -605,34 +605,122 @@ Milestone 4.
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** hybrid search — I added a keyword signal alongside the
+vector one and used it in the relevance gate. `gate.py::check` now refuses a
+question when the best distance clears the cutoff **or** when no word the
+question is about appears anywhere in the retrieved chunks
+(`gate.py::has_lexical_support`). One extra condition, roughly twenty lines, no
+change to retrieval or to the prompt.
 
-**Why I picked it:**
+**Why I picked it:** my diagnosis says the embedding encodes what a passage is
+*about* and carries no lexical signal at all — "how much is tuition" sits 0.552
+from a document about transcripts costing $8 and shares no word with it — so the
+fix has to supply the signal that was missing rather than re-tune the one that
+can't carry the distinction.
 
-<!-- Connect it to a specific diagnosis above in one sentence. If you can't,
-     you picked a fix because it sounded impressive. -->
+### What I tried first, and why it isn't what shipped
+
+I started with BM25 proper, since `rank-bm25` ships with the starter and the
+obvious reading of "hybrid search" is to fuse a BM25 score with the vector
+score. I built it and measured the scores before wiring it to anything:
+
+```
+ANSWERABLE vague      bm25 3.39 - 5.37
+UNANSWERABLE campus   bm25 2.14 - 6.26
+```
+
+**The ranges overlap completely.** "When is spring break" scores 6.26, higher
+than every answerable question in the group, because BM25 rewards term frequency
+and both "spring" and "break" occur in the corpus in unrelated senses. Weighted
+keyword scoring measures how *much* vocabulary overlaps; it can't tell that the
+overlap is irrelevant. A threshold on that number would have refused real
+questions and let tuition through.
+
+What does separate the groups is the weaker question: does *any* word the
+question is about appear at all. That's the version in `gate.py`. I also tested
+a corpus-wide variant — is the word anywhere in the 88 documents — and it's
+strictly weaker, catching 3 of 5 instead of 4 of 5, because "acceptance rate"
+contains "rate", which exists in the corpus but not in anything retrieved for
+that question.
+
+I tested two other ideas and rejected both on measurement:
+
+- **Distance margin** (best vs. mean of the top 5): answerable questions range
+  0.020–0.266, unanswerable 0.011–0.084. Total overlap, no signal.
+- **IDF thresholding**: "break" appears in one document and "walking" appears in
+  one document — identical rarity, one unanswerable and one answerable.
 
 ### Run Log — After
 
-<!-- Same format, same five criteria, three runs each.
-     `python run_eval.py --label after` -->
+`python run_eval.py --label after` — `results/run_2026-09-23_1826_after.md`.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 4. Every chunk carries its title line | 88 of 88 | 88 of 88 | 88 of 88 | 88 of 88 | MET |
+| 5. Answer contains the `expects` string | 4 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
 
 **Did it help?**
 
-<!-- Say plainly whether it did, and how you know. If it made things worse,
-     say that — a change that backfired, honestly reported, earns full credit
-     and is more interesting than one that worked. What matters is that you can
-     tell.
+Yes — but not on the table above, and that's the honest headline. **Every
+criterion reads exactly the same before and after.** All five were already MET,
+so on my own acceptance criteria this change is invisible. If the five criteria
+were the whole story, I'd have to report that I changed the system and nothing
+moved.
 
-     Milestone 4. -->
+The change is visible on the test my criteria couldn't see — the campus-flavoured
+questions the corpus can't answer:
+
+| | Before | After |
+|---|---|---|
+| Gate refuses campus-flavoured unanswerable questions | **0 of 5** | **4 of 5** |
+| False refusals, my 5 test questions | 0 of 5 | 0 of 5 |
+| False refusals, 5 vague real-phrasing questions | 0 of 5 | 0 of 5 |
+| Criterion 3's own `OUT_OF_SCOPE` five | 5 of 5 | 5 of 5 |
+
+```
+refused  best distance 0.552 is under the 0.75 cutoff, but no word from the question appears in the retrieved text  | how much is tuition
+refused  best distance 0.699 ... no word from the question appears in the retrieved text  | what is the acceptance rate
+PASSED   best distance 0.708 is under the 0.75 cutoff                                     | when is spring break
+refused  best distance 0.717 ... no word from the question appears in the retrieved text  | where is the football stadium
+refused  best distance 0.742 ... no word from the question appears in the retrieved text  | who is the university president
+```
+
+Zero to four, with no false refusals anywhere — not on the five questions I wrote
+knowing the answers, and not on the five vaguely worded ones a real student would
+type. That last column is the one I was most worried about: a lexical condition
+is exactly the kind of change that quietly starts refusing legitimate questions,
+and it didn't.
+
+There's a second effect worth recording. Before the change, those questions
+reached the model and were refused by the grounding instruction — correctly, all
+eight of eight I tested. So the user-visible answer was already right; what was
+wrong was that being right depended entirely on the model choosing to obey an
+instruction, and cost an API call each time. `how much is tuition` now costs
+**0 model calls** instead of 1:
+
+```
+$ python app.py ask "how much is tuition"
+  (best distance 0.552, cutoff 0.75)
+I don't have enough information about that.
+0 model calls this session
+```
+
+**How I know it's the change and not luck.** Criteria 1, 3 and 4 are
+deterministic, so before and after are exact comparisons rather than samples.
+The only code that moved is `gate.py` plus passing `question` into
+`gate.check` at four call sites; retrieval, chunking, the index and the prompt
+are untouched, and the distances in both run logs are identical to three decimal
+places.
+
+**What it didn't fix.** "When is spring break" still gets through, at 0.708. Both
+"spring" and "break" appear in the corpus — "break" in one document, in an
+unrelated sense — so the question has lexical support that means nothing. The
+check tests whether a connection exists, not whether it's meaningful, and that
+was a deliberate choice: requiring more than one matching word starts refusing
+real questions. One question in five is the cost of not refusing anything real.
 
 ## What's Still Broken
 

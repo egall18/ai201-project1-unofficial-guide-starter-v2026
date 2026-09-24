@@ -840,3 +840,75 @@ is invisible to it, and everything nearer is what a student would actually ask.
 The signal isn't in the embedding, so the fix must ADD a signal rather than
 re-tune one: check whether retrieved chunks contain what was asked about, not
 whether they resemble it.
+
+---
+
+# Unit 2, Milestone 4 — the improvement
+
+## What shipped
+
+Hybrid search: a keyword signal alongside the vector one, used in the gate.
+`gate.py::check` refuses when distance clears the cutoff **or** when no content
+word of the question appears in any retrieved chunk
+(`gate.py::has_lexical_support`). ~20 lines, plus passing `question` through
+four `gate.check` call sites. Retrieval, chunking, index and prompt untouched.
+
+Follows the diagnosis directly: the embedding carries no lexical signal, so add
+one rather than re-tune the one that can't carry the distinction.
+
+## What I tried first and rejected, with numbers
+
+**BM25 proper.** `rank-bm25` ships with the starter and fusing a BM25 score with
+the vector score is the obvious reading of "hybrid search". Built it, measured
+before wiring:
+
+```
+ANSWERABLE vague      bm25 3.39 - 5.37
+UNANSWERABLE campus   bm25 2.14 - 6.26
+```
+
+Ranges overlap completely. "When is spring break" scores 6.26 — higher than
+every answerable question — because BM25 rewards term frequency and both
+"spring" and "break" occur in unrelated senses. Weighted scoring measures how
+*much* vocabulary overlaps, not whether the overlap means anything.
+
+**Corpus-wide vocabulary check** (is the word anywhere in the 88 docs): strictly
+weaker, 3 of 5 vs 4 of 5. "Acceptance rate" contains "rate", which exists in the
+corpus but not in anything retrieved for that question.
+
+**Distance margin** (best vs mean of top 5): answerable 0.020-0.266,
+unanswerable 0.011-0.084. Total overlap.
+
+**IDF thresholding**: "break" df=1, "walking" df=1. Identical rarity, opposite
+answerability.
+
+## Results
+
+Every criterion identical before and after — all five were already MET, so on my
+own criteria the change is invisible.
+
+| | Before | After |
+|---|---|---|
+| Gate refuses campus-flavoured unanswerable | **0 of 5** | **4 of 5** |
+| False refusals, my 5 test questions | 0 of 5 | 0 of 5 |
+| False refusals, 5 vague real-phrasing | 0 of 5 | 0 of 5 |
+| Criterion 3's own OUT_OF_SCOPE five | 5 of 5 | 5 of 5 |
+| `how much is tuition` API cost | 1 call | **0 calls** |
+
+Second-order effect: before, these reached the model and were refused by the
+grounding instruction — correctly, 8 of 8 tested. The answer was already right;
+what was wrong is that being right depended on the model obeying an instruction,
+and cost a call each time.
+
+## Attribution
+
+Criteria 1, 3, 4 are deterministic, so before/after are exact comparisons not
+samples. Only gate.py moved. Distances identical to three decimals in both logs.
+
+## Still broken
+
+"When is spring break" passes at 0.708. Both words exist in the corpus, "break"
+in one document in an unrelated sense — lexical support that means nothing. The
+check tests whether a connection exists, not whether it's meaningful. Deliberate:
+requiring more than one matching word starts refusing real questions. One in five
+is the price of zero false refusals.
